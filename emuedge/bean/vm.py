@@ -4,11 +4,11 @@ import XenAPI, logging, sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, './')
 
-from dev import dev
-from dev import dev_type
+from node import node
+from node import node_type
 from helper import autolog as log
 
-class vm(dev):
+class vm(node):
 	# snapshot id
 	#ssid=''
 	# template id
@@ -23,17 +23,54 @@ class vm(dev):
 	# vm name label
 	vname=''
 	# vm device type
-	dtype=dev_type.NODE
+	dtype=node_type.NODE
 	# snapshot or tempalteid the vm based on
 	template=''
+	# device type
+	dtype=node_type.NODE
+	# domain id, useful for identifying vifs
+	domid=-1
+	# vifs on this vm
+	vifs=[]
 
 	def __init__(self, session, did, template, vname):
-		dev.__init__(self, did)
+		node.__init__(self, did)
 		self.did=did
 		self.template=template
 		self.vname=vname
 		self.install(session, template)
+		self.vifs=session.xenapi.VM.get_VIFs(self.vref)
 		pass
+
+	# get the next vif device id
+	def get_new_vif_id(self, session):
+		# find out the current largest interface number
+		max=0
+		for vif in self.vifs:
+			vif_record=session.xenapi.VIF.get_record(vif)
+			no=int(vif_record['device'])
+			if no > max:
+				max=no
+		max+=1
+		return max
+
+	# create vif
+	# assume
+	# 2. no vif changes are made otherwhere than our system
+	def create_vif_on_xbr(self, session, xswitch):
+		id=get_new_vif_id(session)
+		# construct vif args
+		vif_args={ 'device': str(max),
+			'network': xswitch.br,
+			'VM': self.vref,
+			'MAC': "",
+			'MTU': "1500",
+			"qos_algorithm_type": "",
+			"qos_algorithm_params": {},
+			"other_config": {} }
+		vif=session.xenapi.VIF.create(vif_args)
+		self.vifs.append(vif)
+		return vif
 
 	def set_VCPUs_max(self, session, max_vcpu):
 		log('the power state: ' + self.get_power_state(session))
@@ -61,7 +98,7 @@ class vm(dev):
 	def install(self, session, template):
 		self.vref=session.xenapi.VM.clone(template, self.vname)
 		session.xenapi.VM.provision(self.vref)
-		return self.vref
+		self.domid=session.xenapi.VM.get_domid(self.vref)
 
 	def provision(self, session):
 		session.xenapi.VM.provision(self.vref)

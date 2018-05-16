@@ -1,19 +1,12 @@
 import sys, logging
-from abc import ABCMeta, abstractmethod
+from node import node
+from node import node_type
+from abc import abstractmethod
 
-class dev_type():
-	NODE=1
-	SWITCH=2
-	ROUTER=3
+class dev(node):
 
-class dev:
-	__metaclass__ = ABCMeta
-	# device id
-	did=''
-	# device type
-	dtype=1
-
-	def __init__(self, did=1, dtype=dev_type.NODE):
+	def __init__(self, did=1, dtype=node_type.NODE):
+		node.__init__(did, dtype)
 		pass
 
 	def __str__(self):
@@ -21,5 +14,9 @@ class dev:
 		return str(', '.join("%s: %s" % item for item in attrs.items()))
 
 	@abstractmethod
-	def uninstall(self):
+	def start(self, session=None):
+		pass
+
+	@abstractmethod
+	def shutdown(self, session=None):
 		pass

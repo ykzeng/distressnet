@@ -10,6 +10,7 @@ from vm import vm
 from dev import dev
 from helper import initializer
 from helper import autolog as log
+from xswitch import xswitch
 
 class xen_net:
 	def __init__(self, uname, pwd, template_lst):
@@ -20,6 +21,8 @@ class xen_net:
 		self.emp_ids=[0]
 		self.session=xen_net.init_session(uname, pwd)
 		self.init_templates(template_lst)
+		# init a dummy bridge
+		self.create_new_xbr('dummy')
 		pass
 
 	@staticmethod
@@ -71,12 +74,33 @@ class xen_net:
 		self.dev_list[did]=node
 		return node
 
+	def create_new_xbr(self, name):
+		did=self.get_new_id()
+		br=xswitch(self.session, did, name)
+		self.dev_list[did]=br
+		return br
+
 	def clear(self):
 		for i in range(0, len(self.dev_list)):
 			if i not in self.emp_ids:
 				self.dev_list[i].uninstall(self.session)
 		self.dev_list=[]
 		self.emp_ids=[0]
+
+	def start_node(self, did):
+		node=self.dev_list[did]
+		node.start(self.session)
+
+	def shutdown_node(self, did):
+		node=self.dev_list[did]
+		node.shutdown(self.session)
+
+	# start all nodes
+	# ATTENTION: we may need to start router/switch first here
+	# if they are involved in the future
+	def start_all(self):
+		for dev in self.dev_list:
+			dev.start(self.session)
 
 class net_graph:
 	test=None
@@ -90,9 +114,10 @@ def test_main():
 	# simple logging
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
-
+	# init xennet with templates we would like to use
 	tlst=['android-basic', 'android-terminal']
 	xnet=xen_net("root", "789456123", tlst)
+	# creating test nodes
 	test1=xnet.create_new_node('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
 	test2=xnet.create_new_node('android-terminal', 'py_test2', override=False)
 	return xnet
