@@ -120,4 +120,8 @@ def test_main():
 	# creating test nodes
 	test1=xnet.create_new_node('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
 	test2=xnet.create_new_node('android-terminal', 'py_test2', override=False)
+
+	xnet.dev_list[0].plug_vm(xnet.session, test1)
+	xnet.dev_list[0].plug_vm(xnet.session, test2)
+
 	return xnet

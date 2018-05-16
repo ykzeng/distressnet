@@ -35,7 +35,7 @@ class xswitch(node):
 			self.port_set=port_set
 
 	def plug_vm(self, session, vm):
-		create_vif_on_xbr(session, self)
+		vm.create_vif_on_xbr(session, self)
 
 	def uninstall(self, session):
 		session.xenapi.network.destroy(self.br)

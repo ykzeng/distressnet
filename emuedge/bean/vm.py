@@ -58,9 +58,9 @@ class vm(node):
 	# assume
 	# 2. no vif changes are made otherwhere than our system
 	def create_vif_on_xbr(self, session, xswitch):
-		id=get_new_vif_id(session)
+		id=self.get_new_vif_id(session)
 		# construct vif args
-		vif_args={ 'device': str(max),
+		vif_args={ 'device': str(id),
 			'network': xswitch.br,
 			'VM': self.vref,
 			'MAC': "",
