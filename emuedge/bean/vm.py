@@ -20,8 +20,6 @@ class vm(dev):
 	mem=1024
 	# vm reference from XenAPI
 	vref=''
-	# vm name label
-	vname=''
 	# snapshot or tempalteid the vm based on
 	template=''
 	# domain id, useful for identifying vifs
@@ -29,10 +27,10 @@ class vm(dev):
 	# vifs on this vm
 	#vifs=[]
 
-	def __init__(self, session, did, template, vname, dtype=node_type.DEV):
-		dev.__init__(self, did, dtype=dtype)
+	def __init__(self, session, did, template, name):
+		# TODO: may need to change node type
+		dev.__init__(self, did, name, dtype=node_type.DEV)
 		self.template=template
-		self.vname=vname
 		self.install(session, template)
 		self.vifs=session.xenapi.VM.get_VIFs(self.vref)
 		pass
@@ -85,6 +83,9 @@ class vm(dev):
 			log(msg)
 
 	def set_fixed_VCPUs(self, session, vcpu):
+		self.set_VCPUs_at_startup(session, 1)
+		self.set_VCPUs_max(session, 1)
+
 		self.set_VCPUs_max(session, vcpu)
 		self.set_VCPUs_at_startup(session, vcpu)
 
@@ -92,7 +93,7 @@ class vm(dev):
 	# @session: XenAPI session
 	# @template: can be vm/snapshot handle
 	def install(self, session, template):
-		self.vref=session.xenapi.VM.clone(template, self.vname)
+		self.vref=session.xenapi.VM.clone(template, self.name)
 		session.xenapi.VM.provision(self.vref)
 		self.domid=session.xenapi.VM.get_domid(self.vref)
 

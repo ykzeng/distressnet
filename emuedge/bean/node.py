@@ -12,10 +12,13 @@ class node:
 	did=''
 	# device type
 	dtype=1
+	# device name
+	name=''
 
-	def __init__(self, did=1, dtype=node_type.DEV):
+	def __init__(self, did, name, dtype):
 		self.did=did
 		self.dtype=dtype
+		self.name=name
 		pass
 
 	@abstractmethod

@@ -5,8 +5,8 @@ from abc import abstractmethod
 
 class dev(node):
 
-	def __init__(self, did=1, dtype=node_type.DEV):
-		node.__init__(self, did, dtype)
+	def __init__(self, did, name, dtype=node_type.DEV):
+		node.__init__(self, did, name, dtype)
 		pass
 
 	def __str__(self):

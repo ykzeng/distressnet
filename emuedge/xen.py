@@ -123,18 +123,17 @@ class xen_net:
 			if node['type']==ntype.SWITCH:
 				self.create_new_xbr(node['name'], did=node['id'])
 			elif node['type']==ntype.DEV:
-				print node['image']
 				self.create_new_dev(node['image'], node['name'], 
 				node['override'], did=node['id'], vcpu=node['vcpus'], mem=node['mem'])
 			else:
 				log("node type " + node['type'] + " currently not supported!")
 		# create all links
-		for node1 in nodes:
-			id1=node1['id']
-			node1=dev_list[id1]
-			for node2 in node['neighbors']:
+		for node1info in nodes:
+			id1=node1info['id']
+			node1=self.dev_list[id1]
+			for node2 in node1info['neighbors']:
 				id2=node2['id']
-				node2=dev_list[id2]
+				node2=self.dev_list[id2]
 				if graph[id1][id2]==None:
 					link=self.connect(node1, node2)
 					graph[id1][id2]=link
@@ -142,6 +141,8 @@ class xen_net:
 
 	def connect(self, node1, node2):
 		# TODO: combine router type with switch type
+		log("\nnode1 name:\t" + str(node1.name) + "\n node2 name:\t" + str(node2.name) + "\n")
+		log("\nnode1 type:\t" + str(node1.dtype) + "\n node2 type:\t" + str(node2.dtype) + "\n")
 		if node1.dtype==ntype.SWITCH:
 			if node2.dtype==ntype.DEV:
 				vif=node1.plug(self.session, node2)
