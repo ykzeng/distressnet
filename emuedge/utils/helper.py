@@ -41,3 +41,6 @@ def autolog(message):
         func.co_filename, 
         func.co_firstlineno
     ))
+
+def mb2byte(mem):
+    return str(int(mem)*1024*1024)

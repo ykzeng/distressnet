@@ -2,6 +2,7 @@ import os
 import subprocess
 import logging, sys
 import XenAPI
+from sets import Set
 
 sys.path.insert(0, './bean')
 sys.path.insert(0, './utils')
@@ -9,7 +10,6 @@ sys.path.insert(0, './utils')
 from vm import vm
 from dev import dev
 from topo import topo
-from helper import initializer
 from helper import autolog as log
 from xswitch import xswitch
 from node import node_type as ntype
@@ -19,12 +19,14 @@ from link import switch2switch
 class xen_net:
 	def __init__(self, uname, pwd, template_lst):
 		# a list of 'dev' instances
-		self.dev_list=[]
+		self.node_list=[]
 		# a dict that stores <name, template_ref(vm_ref)> pairs
 		self.template_dict={}
 		self.emp_ids=[0]
 		self.session=xen_net.init_session(uname, pwd)
 		self.init_templates(template_lst)
+		self.switch_set=Set()
+		self.dev_set=Set()
 		# init a dummy bridge
 		#self.create_new_xbr('dummy')
 		pass
@@ -53,7 +55,7 @@ class xen_net:
 	def get_new_id(self):
 		if len(self.emp_ids)==1:
 			did=self.emp_ids[0]
-			self.dev_list.append(None)
+			self.node_list.append(None)
 			self.emp_ids[0]+=1
 			return did
 		else:
@@ -61,13 +63,24 @@ class xen_net:
 			did=self.emp_ids[last]
 			self.emp_ids=self.emp_ids[:-1]
 
+	# the only entry to delete node
 	def del_node(self, did):
-		self.dev_list[did].uninstall()
+		node=self.node_list[did]
+
+		if node.dtype==ntype.SWITCH:
+			self.switch_set.remove(did)
+		elif node.dtype==ntype.DEV:
+			self.dev_set.remove(did)
+		else:
+			log("unsupported node type " + str(node.dtype))
+
+		node.uninstall()
 		self.emp_ids.append(did)
 
 	def get_node(self, did):
-		return self.dev_list[did]
+		return self.node_list[did]
 
+	# the 1st entry to create node
 	def create_new_dev(self, tname, name, override, did=-1, vcpu=0, mem=0):
 		if did==-1:
 			did=self.get_new_id()
@@ -76,36 +89,55 @@ class xen_net:
 		if override:
 			node.set_fixed_VCPUs(self.session, vcpu)
 			node.set_memory(self.session, mem)
-		self.dev_list[did]=node
+		self.node_list[did]=node
+		self.dev_set.add(did)
 		return node
+
 	# TODO: what to return? did or the newly created obj
+	# the 2nd entry to create node
 	def create_new_xbr(self, name, did=-1):
 		if did==-1:
 			did=self.get_new_id()
 		br=xswitch(self.session, did, name)
-		self.dev_list[did]=br
+		self.node_list[did]=br
+		self.switch_set.add(did)
 		return br
 
 	def clear(self):
-		for i in range(0, len(self.dev_list)):
-			if i not in self.emp_ids:
-				self.dev_list[i].uninstall(self.session)
-		self.dev_list=[]
+		# obsolete: do not discriminate switch and devices
+		#for i in range(0, len(self.node_list)):
+		#	if i not in self.emp_ids:
+		#		self.node_list[i].uninstall(self.session)
+		# delete devices first to make sure all vifs are cleared
+		for dev_id in self.dev_set:
+			dev=self.node_list[dev_id]
+			dev.uninstall(self.session)
+
+		for sid in self.switch_set:
+			switch=self.node_list[sid]
+			switch.uninstall(self.session)
+
+		self.node_list=[]
 		self.emp_ids=[0]
+		# assume that both two sets are maintained properly, meaning uninstalled
+		# devices are removed from the sets on time
+		self.dev_set.clear()
+		self.switch_set.clear()
 
 	def start_node(self, did):
-		node=self.dev_list[did]
+		node=self.node_list[did]
 		node.start(self.session)
 
 	def shutdown_node(self, did):
-		node=self.dev_list[did]
+		node=self.node_list[did]
 		node.shutdown(self.session)
 
 	# start all nodes
 	# ATTENTION: we may need to start router/switch first here
 	# if they are involved in the future
+	# TODO: rewrite this method to discriminate between switch and devices
 	def start_all(self):
-		for dev in self.dev_list:
+		for dev in self.node_list:
 			dev.start(self.session)
 
 	# did in topology init process would be purely determined by topo definition
@@ -113,7 +145,7 @@ class xen_net:
 	def init_topo(self, filename):
 		nodes=topo.read_from_json(filename)
 
-		self.dev_list=[None]*len(nodes)
+		self.node_list=[None]*len(nodes)
 		self.emp_ids[0]=len(nodes)
 
 		graph=[[None]*len(nodes)]*len(nodes)
@@ -130,10 +162,10 @@ class xen_net:
 		# create all links
 		for node1info in nodes:
 			id1=node1info['id']
-			node1=self.dev_list[id1]
+			node1=self.node_list[id1]
 			for node2 in node1info['neighbors']:
 				id2=node2['id']
-				node2=self.dev_list[id2]
+				node2=self.node_list[id2]
 				if graph[id1][id2]==None:
 					link=self.connect(node1, node2)
 					graph[id1][id2]=link
@@ -171,16 +203,12 @@ def test_naive():
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 	# init xennet with templates we would like to use
-	tlst=['android-basic', 'android-terminal']
+	tlst=['tandroid','tcentos']
 	xnet=xen_net("root", "789456123", tlst)
 	# creating test nodes
-	test1=xnet.create_new_dev('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
-	test2=xnet.create_new_dev('android-terminal', 'py_test2', override=False)
-
-	xnet.dev_list[0].plug(xnet.session, test1)
-	xnet.dev_list[0].plug(xnet.session, test2)
-
-	xnet.clear()
+	test1=xnet.create_new_dev('tandroid', 'py_test1', override=True, vcpu=4, mem=2048)
+	test2=xnet.create_new_dev('tcentos', 'py_test2', override=False)
+	return xnet
 
 def test_connect():
 	# simple logging
@@ -203,7 +231,7 @@ def test_topo():
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
 	# init xennet with templates we would like to use
-	tlst=['android-basic', 'android-terminal', 'tandroid', 'tcentos']
+	tlst=['tandroid', 'tcentos']
 	xnet=xen_net("root", "789456123", tlst)
 	# creating test nodes
 	xnet.init_topo('utils/two_subnet.topo')

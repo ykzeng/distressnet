@@ -7,7 +7,9 @@ sys.path.insert(0, './')
 from dev import dev
 from node import node_type
 from helper import autolog as log
+from helper import mb2byte
 
+# ATTENTION: all memory are in MB
 class vm(dev):
 	# snapshot id
 	#ssid=''
@@ -67,6 +69,11 @@ class vm(dev):
 		return vif
 
 	def set_VCPUs_max(self, session, max_vcpu):
+		platform_info=session.xenapi.VM.get_platform(self.vref)
+		cores_per_sock=int(platform_info['cores-per-socket'])
+		if max_vcpu%cores_per_sock!=0:
+			log("max vcpu to set is not a multiple of cores-per-socket! abandon!")
+			return
 		log('the power state: ' + self.get_power_state(session))
 		if (self.get_power_state(session)=='Halted'):
 			session.xenapi.VM.set_VCPUs_max(self.vref, max_vcpu)
@@ -75,6 +82,11 @@ class vm(dev):
 			log(msg)
 
 	def set_VCPUs_at_startup(self, session, up_vcpu):
+		platform_info=session.xenapi.VM.get_platform(self.vref)
+		cores_per_sock=int(platform_info['cores-per-socket'])
+		if up_vcpu%cores_per_sock!=0:
+			log("startup vcpu to set is not a multiple of cores-per-socket! abandon!")
+			return
 		log('the power state: ' + self.get_power_state(session))
 		if (self.get_power_state(session)=='Halted'):
 			session.xenapi.VM.set_VCPUs_at_startup(self.vref, up_vcpu)
@@ -83,8 +95,10 @@ class vm(dev):
 			log(msg)
 
 	def set_fixed_VCPUs(self, session, vcpu):
-		self.set_VCPUs_at_startup(session, 1)
-		self.set_VCPUs_max(session, 1)
+		platform_info=session.xenapi.VM.get_platform(self.vref)
+		cores_per_sock=int(platform_info['cores-per-socket'])
+		self.set_VCPUs_at_startup(session, cores_per_sock)
+		self.set_VCPUs_max(session, cores_per_sock)
 
 		self.set_VCPUs_max(session, vcpu)
 		self.set_VCPUs_at_startup(session, vcpu)
@@ -125,32 +139,37 @@ class vm(dev):
 		self.set_dynamic_max_mem(session, max_mem)
 
 	def set_fixed_mem(self, session, mem):
+		mem=mb2byte(mem)
 		log("before setting fixed min")
 		self.set_fixed_min_mem(session, mem)
 		log("before setting fixed max")
 		self.set_fixed_max_mem(session, mem)
 
-	def set_static_min_mem(self, session, min_mem):
+	def set_static_min_mem(self, session, mem):
+		mem=mb2byte(mem)
 		try:
-			session.xenapi.VM.set_memory_static_min(self.vref, min_mem)
+			session.xenapi.VM.set_memory_static_min(self.vref, mem)
 		except XenAPI.Failure as e:
 			print(e)
 
-	def set_static_max_mem(self, session, max_mem):
+	def set_static_max_mem(self, session, mem):
+		mem=mb2byte(mem)
 		try:
-			session.xenapi.VM.set_memory_static_max(self.vref, max_mem)
+			session.xenapi.VM.set_memory_static_max(self.vref, mem)
 		except XenAPI.Failure as e:
 			print(e)
 
-	def set_dynamic_min_mem(self, session, min_mem):
+	def set_dynamic_min_mem(self, session, mem):
+		mem=mb2byte(mem)
 		try:
-			session.xenapi.VM.set_memory_dynamic_min(self.vref, min_mem)
+			session.xenapi.VM.set_memory_dynamic_min(self.vref, mem)
 		except XenAPI.Failure as e:
 			print(e)
 
-	def set_dynamic_max_mem(self, session, max_mem):
+	def set_dynamic_max_mem(self, session, mem):
+		mem=mb2byte(mem)
 		try:
-			session.xenapi.VM.set_memory_dynamic_max(self.vref, max_mem)
+			session.xenapi.VM.set_memory_dynamic_max(self.vref, mem)
 		except XenAPI.Failure as e:
 			print(e)
 
@@ -189,6 +208,7 @@ class vm(dev):
 			log(msg)
 
 	def set_memory(self, session, mem):
+		mem=mb2byte(mem)
 		try:
 			self.set_static_min_mem(session, 0)
 			session.xenapi.VM.set_memory(self.vref, mem)
