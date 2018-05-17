@@ -9,6 +9,7 @@ from node import node
 from node import node_type
 from helper import autolog as log
 
+# TODO: how to set new bridge as none-automatically adding to new vms
 class xswitch(node):
 	# device type
 	dtype=node_type.SWITCH
@@ -34,8 +35,9 @@ class xswitch(node):
 		else:
 			self.port_set=port_set
 
-	def plug_vm(self, session, vm):
-		vm.create_vif_on_xbr(session, self)
+
+	def plug(self, session, dev):
+		return dev.create_vif_on_xbr(session, self)
 
 	def uninstall(self, session):
 		session.xenapi.network.destroy(self.br)

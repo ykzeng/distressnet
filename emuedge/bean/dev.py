@@ -5,8 +5,8 @@ from abc import abstractmethod
 
 class dev(node):
 
-	def __init__(self, did=1, dtype=node_type.NODE):
-		node.__init__(did, dtype)
+	def __init__(self, did=1, dtype=node_type.DEV):
+		node.__init__(self, did, dtype)
 		pass
 
 	def __str__(self):
@@ -19,4 +19,8 @@ class dev(node):
 
 	@abstractmethod
 	def shutdown(self, session=None):
+		pass
+
+	@abstractmethod
+	def create_vif_on_xbr(self, session, xswitch):
 		pass

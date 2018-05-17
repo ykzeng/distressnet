@@ -4,11 +4,11 @@ import XenAPI, logging, sys
 sys.path.insert(0, '../utils')
 sys.path.insert(0, './')
 
-from node import node
+from dev import dev
 from node import node_type
 from helper import autolog as log
 
-class vm(node):
+class vm(dev):
 	# snapshot id
 	#ssid=''
 	# template id
@@ -22,20 +22,15 @@ class vm(node):
 	vref=''
 	# vm name label
 	vname=''
-	# vm device type
-	dtype=node_type.NODE
 	# snapshot or tempalteid the vm based on
 	template=''
-	# device type
-	dtype=node_type.NODE
 	# domain id, useful for identifying vifs
 	domid=-1
 	# vifs on this vm
-	vifs=[]
+	#vifs=[]
 
-	def __init__(self, session, did, template, vname):
-		node.__init__(self, did)
-		self.did=did
+	def __init__(self, session, did, template, vname, dtype=node_type.DEV):
+		dev.__init__(self, did, dtype=dtype)
 		self.template=template
 		self.vname=vname
 		self.install(session, template)
@@ -55,6 +50,7 @@ class vm(node):
 		return max
 
 	# create vif
+	# @return vif handle in xen
 	# assume
 	# 2. no vif changes are made otherwhere than our system
 	def create_vif_on_xbr(self, session, xswitch):
@@ -69,7 +65,7 @@ class vm(node):
 			"qos_algorithm_params": {},
 			"other_config": {} }
 		vif=session.xenapi.VIF.create(vif_args)
-		self.vifs.append(vif)
+		#self.vifs.append(vif)
 		return vif
 
 	def set_VCPUs_max(self, session, max_vcpu):

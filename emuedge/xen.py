@@ -8,9 +8,13 @@ sys.path.insert(0, './utils')
 
 from vm import vm
 from dev import dev
+from topo import topo
 from helper import initializer
 from helper import autolog as log
 from xswitch import xswitch
+from node import node_type as ntype
+from link import switch2node
+from link import switch2switch
 
 class xen_net:
 	def __init__(self, uname, pwd, template_lst):
@@ -22,7 +26,7 @@ class xen_net:
 		self.session=xen_net.init_session(uname, pwd)
 		self.init_templates(template_lst)
 		# init a dummy bridge
-		self.create_new_xbr('dummy')
+		#self.create_new_xbr('dummy')
 		pass
 
 	@staticmethod
@@ -64,8 +68,9 @@ class xen_net:
 	def get_node(self, did):
 		return self.dev_list[did]
 
-	def create_new_node(self, tname, name, override, vcpu=0, mem=0):
-		did=self.get_new_id()
+	def create_new_dev(self, tname, name, override, did=-1, vcpu=0, mem=0):
+		if did==-1:
+			did=self.get_new_id()
 		template=self.template_dict[tname]
 		node=vm(self.session, did, template, name)
 		if override:
@@ -73,9 +78,10 @@ class xen_net:
 			node.set_memory(self.session, mem)
 		self.dev_list[did]=node
 		return node
-
-	def create_new_xbr(self, name):
-		did=self.get_new_id()
+	# TODO: what to return? did or the newly created obj
+	def create_new_xbr(self, name, did=-1):
+		if did==-1:
+			did=self.get_new_id()
 		br=xswitch(self.session, did, name)
 		self.dev_list[did]=br
 		return br
@@ -102,15 +108,64 @@ class xen_net:
 		for dev in self.dev_list:
 			dev.start(self.session)
 
-class net_graph:
-	test=None
+	# did in topology init process would be purely determined by topo definition
+	# TODO: don't forget to update emp_ids[]
+	def init_topo(self, filename):
+		nodes=topo.read_from_json(filename)
 
+		self.dev_list=[None]*len(nodes)
+		self.emp_ids[0]=len(nodes)
+
+		graph=[[None]*len(nodes)]*len(nodes)
+
+		# create all nodes
+		for node in nodes:
+			if node['type']==ntype.SWITCH:
+				self.create_new_xbr(node['name'], did=node['id'])
+			elif node['type']==ntype.DEV:
+				print node['image']
+				self.create_new_dev(node['image'], node['name'], 
+				node['override'], did=node['id'], vcpu=node['vcpus'], mem=node['mem'])
+			else:
+				log("node type " + node['type'] + " currently not supported!")
+		# create all links
+		for node1 in nodes:
+			id1=node1['id']
+			node1=dev_list[id1]
+			for node2 in node['neighbors']:
+				id2=node2['id']
+				node2=dev_list[id2]
+				if graph[id1][id2]==None:
+					link=self.connect(node1, node2)
+					graph[id1][id2]=link
+					graph[id2][id1]=link
+
+	def connect(self, node1, node2):
+		# TODO: combine router type with switch type
+		if node1.dtype==ntype.SWITCH:
+			if node2.dtype==ntype.DEV:
+				vif=node1.plug(self.session, node2)
+				return switch2node(vif)
+			#elif node2.dtype==ntype.SWITCH:
+			#	vif1, vif2=node1.plug(self.session, node2)
+			#	return switch2switch(vif1, vif2)
+			else:
+				log("type connection between (" + str(node1.dtype) 
+					+ str(node2.dtype) + ") not supported yet!")
+		elif node1.dtype==ntype.DEV:
+			# TODO: combine router type with switch type
+			if node2.dtype==ntype.SWITCH:
+				vif=node2.plug(self.session, node1)
+				return switch2node(vif)
+			else:
+				log("type connection between (" + str(node1.dtype) 
+					+ str(node2.dtype) + ") not supported yet!")
 
 class link_prop:
 	# 
 	delay=10
 
-def test_main():
+def test_naive():
 	# simple logging
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
@@ -118,10 +173,37 @@ def test_main():
 	tlst=['android-basic', 'android-terminal']
 	xnet=xen_net("root", "789456123", tlst)
 	# creating test nodes
-	test1=xnet.create_new_node('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
-	test2=xnet.create_new_node('android-terminal', 'py_test2', override=False)
+	test1=xnet.create_new_dev('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
+	test2=xnet.create_new_dev('android-terminal', 'py_test2', override=False)
 
-	xnet.dev_list[0].plug_vm(xnet.session, test1)
-	xnet.dev_list[0].plug_vm(xnet.session, test2)
+	xnet.dev_list[0].plug(xnet.session, test1)
+	xnet.dev_list[0].plug(xnet.session, test2)
 
+	xnet.clear()
+
+def test_connect():
+	# simple logging
+	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
+	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+	# init xennet with templates we would like to use
+	tlst=['android-basic', 'android-terminal']
+	xnet=xen_net("root", "789456123", tlst)
+	# creating test nodes
+	test1=xnet.create_new_dev('android-basic', 'py_test1', override=True, vcpu=4, mem=str(2048*1024*1024))
+	test2=xnet.create_new_dev('android-terminal', 'py_test2', override=False)
+	br1=xnet.create_new_xbr('dummy')
+
+	xnet.connect(br1, test1)
+	xnet.connect(test2, br1)
+	return xnet
+
+def test_topo():
+	# simple logging
+	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
+	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+	# init xennet with templates we would like to use
+	tlst=['android-basic', 'android-terminal', 'tandroid', 'tcentos']
+	xnet=xen_net("root", "789456123", tlst)
+	# creating test nodes
+	xnet.init_topo('utils/two_subnet.topo')
 	return xnet
