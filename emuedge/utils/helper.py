@@ -28,19 +28,20 @@ def initializer(func):
 
     return wrapper
 
-def autolog(message):
+import inspect, logging
+def autolog(message, level=logging.DEBUG):
     "Automatically log the current function details."
-    import inspect, logging
     # Get the previous frame in the stack, otherwise it would
     # be this function!!!
     func = inspect.currentframe().f_back.f_code
     # Dump the message + the name of this function to the log.
-    logging.debug("%s: %s in %s:%i" % (
-        message, 
-        func.co_name, 
-        func.co_filename, 
-        func.co_firstlineno
-    ))
+    msg="%s:%i:%s:%s" % (
+            func.co_filename, 
+            func.co_firstlineno,
+            func.co_name,
+            message
+        )
+    logging.log(level, msg)
 
 def mb2byte(mem):
     return str(int(mem)*1024*1024)

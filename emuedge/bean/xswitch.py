@@ -11,12 +11,10 @@ from helper import autolog as log
 
 # TODO: how to set new bridge as none-automatically adding to new vms
 class xswitch(node):
-	# port set that records the interface ids on this bridge
-	port_set=None
 	# handle
 	br=''
 
-	def __init__(self, session, did, name, port_set=None):
+	def __init__(self, session, did, name):
 		node.__init__(self, did, name, node_type.SWITCH)
 		br_args={'bridge': name, 
 				'assigned_ips': {}, 
@@ -26,12 +24,6 @@ class xswitch(node):
 				'other_config':{},
 				'blobs': {}}
 		self.br=session.xenapi.network.create(br_args)
-		#self.sname=name
-		if port_set==None:
-			self.port_set=Set([])
-		else:
-			self.port_set=port_set
-
 
 	def plug(self, session, dev):
 		return dev.create_vif_on_xbr(session, self)

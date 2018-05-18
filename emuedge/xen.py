@@ -3,6 +3,7 @@ import subprocess
 import logging, sys
 import XenAPI
 from sets import Set
+import time
 
 sys.path.insert(0, './bean')
 sys.path.insert(0, './utils')
@@ -16,6 +17,8 @@ from node import node_type as ntype
 from link import switch2node
 from link import switch2switch
 
+# session: xen session
+# ssh: ssh session
 class xen_net:
 	def __init__(self, uname, pwd, template_lst):
 		# a list of 'dev' instances
@@ -27,15 +30,42 @@ class xen_net:
 		self.init_templates(template_lst)
 		self.switch_set=Set()
 		self.dev_set=Set()
+		self.ssh=xen_net.init_shell('localhost', uname, pwd)
 		# init a dummy bridge
-		#self.create_new_xbr('dummy')
+		self.dummy=self.create_new_xbr('dummy', record=False)
 		pass
 
 	@staticmethod
-	def init_session(uname, pwd):
-		session=XenAPI.xapi_local()
-		session.xenapi.login_with_password(uname, pwd)
+	def init_session(uname, pwd, local=True):
+		# TODO: enable the init of a possibly remote session
+		if local:
+			session=XenAPI.xapi_local()
+			session.xenapi.login_with_password(uname, pwd)
+		else:
+			log('currently not support remote connection')
 		return session
+
+	# for remote connection
+	#from pexpect import pxssh
+	# need autolog support
+	# session usage:
+	# session.sendline ('ls -l')
+	# session.prompt()         # match the prompt
+	# print session.before     # print everything before the prompt.
+	@staticmethod
+	def init_shell(host, uname, pwd, local=True):
+		if local:
+			return 'localhost'
+		else:
+			log('currently not support remote connection')
+			return None
+		#    session=pxssh.pxssh()
+		#    if not session.login(host, uname, pwd):
+		#        autolog("SSH session failed: " + str(session))
+		#        return None
+		#    else:
+		#        autolog("SSH session login successful")
+		#        return session
 
 	def init_templates(self, tname_arr):
 		for tname in tname_arr:
@@ -95,22 +125,26 @@ class xen_net:
 
 	# TODO: what to return? did or the newly created obj
 	# the 2nd entry to create node
-	def create_new_xbr(self, name, did=-1):
-		if did==-1:
+	def create_new_xbr(self, name, did=-1, record=True):
+		if did==-1 and record:
 			did=self.get_new_id()
 		br=xswitch(self.session, did, name)
-		self.node_list[did]=br
-		self.switch_set.add(did)
+		if record:
+			self.node_list[did]=br
+			self.switch_set.add(did)
 		return br
 
+
+	# ATTENTION: this may cause unexpected data loss!
+	# 1. try to shutdown normally 2. try to shutdown by force
 	def clear(self):
-		# obsolete: do not discriminate switch and devices
-		#for i in range(0, len(self.node_list)):
-		#	if i not in self.emp_ids:
-		#		self.node_list[i].uninstall(self.session)
-		# delete devices first to make sure all vifs are cleared
+		start_time=time.time()
+
 		for dev_id in self.dev_set:
 			dev=self.node_list[dev_id]
+			if dev.get_power_state(self.session)=='Running':
+				if not dev.shutdown(self.session):
+					dev.hard_shutdown(self.session)
 			dev.uninstall(self.session)
 
 		for sid in self.switch_set:
@@ -123,6 +157,11 @@ class xen_net:
 		# devices are removed from the sets on time
 		self.dev_set.clear()
 		self.switch_set.clear()
+
+		self.dummy.uninstall(self.session)
+
+		stop_time=time.time()
+		log("total time (s) consumed for topology clear: " + str(stop_time-start_time))
 
 	def start_node(self, did):
 		node=self.node_list[did]
@@ -137,12 +176,12 @@ class xen_net:
 	# if they are involved in the future
 	# TODO: rewrite this method to discriminate between switch and devices
 	def start_all(self):
-		for dev in self.node_list:
-			dev.start(self.session)
+		[self.node_list[devid].start(self.session) for devid in self.dev_set]
 
 	# did in topology init process would be purely determined by topo definition
 	# TODO: don't forget to update emp_ids[]
 	def init_topo(self, filename):
+		start_time=time.time()
 		nodes=topo.read_from_json(filename)
 
 		self.node_list=[None]*len(nodes)
@@ -170,11 +209,13 @@ class xen_net:
 					link=self.connect(node1, node2)
 					graph[id1][id2]=link
 					graph[id2][id1]=link
+		stop_time=time.time()
+		log("total time (s) consumed for topology init: " + str(stop_time-start_time))
 
 	def connect(self, node1, node2):
 		# TODO: combine router type with switch type
-		log("\nnode1 name:\t" + str(node1.name) + "\n node2 name:\t" + str(node2.name) + "\n")
-		log("\nnode1 type:\t" + str(node1.dtype) + "\n node2 type:\t" + str(node2.dtype) + "\n")
+		#log("\nnode1 name:\t" + str(node1.name) + "\n node2 name:\t" + str(node2.name) + "\n")
+		#log("\nnode1 type:\t" + str(node1.dtype) + "\n node2 type:\t" + str(node2.dtype) + "\n")
 		if node1.dtype==ntype.SWITCH:
 			if node2.dtype==ntype.DEV:
 				vif=node1.plug(self.session, node2)
@@ -193,6 +234,11 @@ class xen_net:
 			else:
 				log("type connection between (" + str(node1.dtype) 
 					+ str(node2.dtype) + ") not supported yet!")
+
+	def __del__(self):
+		log("in the destructor of xnet")
+		self.clear()
+		pass
 
 class link_prop:
 	# 
@@ -226,7 +272,7 @@ def test_connect():
 	xnet.connect(test2, br1)
 	return xnet
 
-def test_topo():
+def test_topo(start=False):
 	# simple logging
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
@@ -235,4 +281,6 @@ def test_topo():
 	xnet=xen_net("root", "789456123", tlst)
 	# creating test nodes
 	xnet.init_topo('utils/two_subnet.topo')
+	if start:
+		xnet.start_all()
 	return xnet

@@ -8,6 +8,7 @@ from dev import dev
 from node import node_type
 from helper import autolog as log
 from helper import mb2byte
+from netif import xen_vif as xvif
 
 # ATTENTION: all memory are in MB
 class vm(dev):
@@ -27,36 +28,36 @@ class vm(dev):
 	# domain id, useful for identifying vifs
 	domid=-1
 	# vifs on this vm
-	#vifs=[]
+	# per XenServer 7.4, the limit of vif number on a VM is 7
+	vif_prefix='vif'
 
-	def __init__(self, session, did, template, name):
+	def __init__(self, session, did, template, name, vif_prefix='vif'):
 		# TODO: may need to change node type
 		dev.__init__(self, did, name, dtype=node_type.DEV)
 		self.template=template
-		self.install(session, template)
-		self.vifs=session.xenapi.VM.get_VIFs(self.vref)
-		pass
+		self.vref=self.install(session, template)
+
+		self.if_lst=[None]*7
+		self.vif_prefix=vif_prefix
 
 	# get the next vif device id
-	def get_new_vif_id(self, session):
-		# find out the current largest interface number
-		max=0
-		for vif in self.vifs:
-			vif_record=session.xenapi.VIF.get_record(vif)
-			no=int(vif_record['device'])
-			if no > max:
-				max=no
-		max+=1
-		return max
+	def get_new_vif_id(self):
+		# find out the empty slot in interface list as the first available vif slot
+		for i in range(0, len(self.if_lst)):
+			if self.if_lst[i]==None:
+				return i
+		log("all vif slots are occupied!", level=logging.CRITICAL)
+		return None
 
 	# create vif
 	# @return vif handle in xen
 	# assume
 	# 2. no vif changes are made otherwhere than our system
 	def create_vif_on_xbr(self, session, xswitch):
-		id=self.get_new_vif_id(session)
+		id=str(self.get_new_vif_id())
+		log(str(id))
 		# construct vif args
-		vif_args={ 'device': str(id),
+		vif_args={ 'device': id,
 			'network': xswitch.br,
 			'VM': self.vref,
 			'MAC': "",
@@ -65,7 +66,6 @@ class vm(dev):
 			"qos_algorithm_params": {},
 			"other_config": {} }
 		vif=session.xenapi.VIF.create(vif_args)
-		#self.vifs.append(vif)
 		return vif
 
 	def set_VCPUs_max(self, session, max_vcpu):
@@ -107,9 +107,9 @@ class vm(dev):
 	# @session: XenAPI session
 	# @template: can be vm/snapshot handle
 	def install(self, session, template):
-		self.vref=session.xenapi.VM.clone(template, self.name)
-		session.xenapi.VM.provision(self.vref)
-		self.domid=session.xenapi.VM.get_domid(self.vref)
+		vref=session.xenapi.VM.clone(template, self.name)
+		session.xenapi.VM.provision(vref)
+		return vref
 
 	def provision(self, session):
 		session.xenapi.VM.provision(self.vref)
@@ -176,6 +176,16 @@ class vm(dev):
 	def start(self, session, pause=False, force=False):
 		try:
 			session.xenapi.VM.start(self.vref, pause, force)
+			self.domid=session.xenapi.VM.get_domid(self.vref)
+			# update all vifs
+			vifs=session.xenapi.VM.get_VIFs(self.vref)
+			#log("length of vifs on " + self.name + ": " + str(len(vifs)))
+			for vif in vifs:
+				index=int(session.xenapi.VIF.get_device(vif))
+				linux_name=self.vif_prefix+str(self.domid)+'.'+str(index)
+				self.if_lst[index]=xvif(linux_name, vif)
+			self.print_vifs()
+			return self.domid
 		except XenAPI.Failure as e:
 			print(e)
 
@@ -188,14 +198,18 @@ class vm(dev):
 	def shutdown(self, session):
 		try:
 			session.xenapi.VM.shutdown(self.vref)
+			return True
 		except XenAPI.Failure as e:
 			print(e)
+			return False
 
 	def hard_shutdown(self, session):
 		try:
 			session.xenapi.VM.hard_shutdown(self.vref)
+			return True
 		except XenAPI.Failure as e:
 			print(e)
+			return False
 
 	def get_power_state(self, session):
 		return session.xenapi.VM.get_power_state(self.vref)
@@ -236,3 +250,12 @@ class vm(dev):
 
 	def get_VBDs(self, session):
 		return session.xenapi.VM.get_VBDs(self.vref)
+
+	def print_vifs(self):
+		msg=self.name + " vifs:"
+		for netif in self.if_lst:
+			if netif==None:
+				break
+			else:
+				msg+=("\n"+netif.name)
+		log(msg)

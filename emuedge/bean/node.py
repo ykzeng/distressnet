@@ -14,6 +14,8 @@ class node:
 	dtype=1
 	# device name
 	name=''
+	# interface list
+	if_lst=[]
 
 	def __init__(self, did, name, dtype):
 		self.did=did
