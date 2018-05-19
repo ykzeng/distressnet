@@ -11,8 +11,10 @@ sys.path.insert(0, './utils')
 from vm import vm
 from dev import dev
 from topo import topo
+import helper
 from helper import autolog as log
 from xswitch import xswitch
+from xswitch import xrouter
 from node import node_type as ntype
 from link import switch2node
 from link import switch2switch
@@ -21,6 +23,8 @@ from link import switch2switch
 # ssh: ssh session
 class xen_net:
 	def __init__(self, uname, pwd, template_lst):
+		# ASSUME: we got sudo
+		helper.info_exe('chmod +x ./bash/*')
 		# a list of 'dev' instances
 		self.node_list=[]
 		# a dict that stores <name, template_ref(vm_ref)> pairs
@@ -134,6 +138,13 @@ class xen_net:
 			self.switch_set.add(did)
 		return br
 
+	def create_new_xrouter(self, name, ipaddr, did=-1):
+		if did==-1:
+			did.self.get_new_id()
+		router=xrouter(self.session, did, name, ipaddr)
+		self.node_list[did]=router
+		self.switch_set.add(did)
+		return router
 
 	# ATTENTION: this may cause unexpected data loss!
 	# 1. try to shutdown normally 2. try to shutdown by force
@@ -196,6 +207,8 @@ class xen_net:
 			elif node['type']==ntype.DEV:
 				self.create_new_dev(node['image'], node['name'], 
 				node['override'], did=node['id'], vcpu=node['vcpus'], mem=node['mem'])
+			elif node['type']==ntype.ROUTER:
+				self.create_new_xrouter(node['name'], node['ipaddr'], did=node['id'])
 			else:
 				log("node type " + node['type'] + " currently not supported!")
 		# create all links
@@ -216,7 +229,7 @@ class xen_net:
 		# TODO: combine router type with switch type
 		#log("\nnode1 name:\t" + str(node1.name) + "\n node2 name:\t" + str(node2.name) + "\n")
 		#log("\nnode1 type:\t" + str(node1.dtype) + "\n node2 type:\t" + str(node2.dtype) + "\n")
-		if node1.dtype==ntype.SWITCH:
+		if node1.dtype==ntype.SWITCH or node1.dtype==ntype.ROUTER:
 			if node2.dtype==ntype.DEV:
 				vif=node1.plug(self.session, node2)
 				return switch2node(vif)
@@ -228,7 +241,8 @@ class xen_net:
 					+ str(node2.dtype) + ") not supported yet!")
 		elif node1.dtype==ntype.DEV:
 			# TODO: combine router type with switch type
-			if node2.dtype==ntype.SWITCH:
+			# TODO: we may have to separate them if new router def comes in
+			if node2.dtype==ntype.SWITCH or node2.dtype==ntype.ROUTER:
 				vif=node2.plug(self.session, node1)
 				return switch2node(vif)
 			else:
@@ -272,7 +286,7 @@ def test_connect():
 	xnet.connect(test2, br1)
 	return xnet
 
-def test_topo(start=False):
+def test_topo(topo='two_subnet.topo', start=False):
 	# simple logging
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
@@ -280,7 +294,7 @@ def test_topo(start=False):
 	tlst=['tandroid', 'tcentos']
 	xnet=xen_net("root", "789456123", tlst)
 	# creating test nodes
-	xnet.init_topo('utils/two_subnet.topo')
+	xnet.init_topo('topo/' + topo)
 	if start:
 		xnet.start_all()
 	return xnet

@@ -1,5 +1,6 @@
 from functools import wraps
 import inspect
+import subprocess
 
 def initializer(func):
     """
@@ -45,3 +46,11 @@ def autolog(message, level=logging.DEBUG):
 
 def mb2byte(mem):
     return str(int(mem)*1024*1024)
+
+def info_exe(cmd):
+    try:
+        output=subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
+    except subprocess.CalledProcessError as exc:
+        print("Status : FAIL", exc.returncode, exc.output)
+    else:
+        print("Output: \n{}\n".format(output))
