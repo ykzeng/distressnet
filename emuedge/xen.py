@@ -17,7 +17,6 @@ from xswitch import xswitch
 from xswitch import xrouter
 from node import node_type as ntype
 from link import switch2node
-from link import switch2switch
 
 # session: xen session
 # ssh: ssh session
@@ -300,10 +299,12 @@ def test_connect():
 	xnet.connect(test2, br1)
 	return xnet
 
-def test_topo(topo='two_subnet.topo', start=False):
+def test_topo(topo, start=True, nolog=False):
 	# simple logging
 	#FORMAT = "[%(levelname)s - %(filename)s:%(lineno)s - %(funcName)s() ] %(message)s"
 	logging.basicConfig(stream=sys.stderr, level=logging.DEBUG)
+	logger=logging.getLogger()
+	logger.disabled=nolog
 	# init xennet with templates we would like to use
 	tlst=['tandroid', 'tcentos']
 	xnet=xen_net("root", "789456123", tlst)

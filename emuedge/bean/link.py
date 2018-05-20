@@ -25,6 +25,7 @@ class switch2node(link):
 		pass
 
 # TODO: two vif might no be good for switch2switch representation
+# obsolete: we ASSUME there is no need for switch2switch link
 class switch2switch(link):
 	def __init__(self, vif1, vif2):
 		self.vif1=vif1
