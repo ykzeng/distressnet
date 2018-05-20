@@ -53,11 +53,27 @@ class xrouter(xswitch):
 		#self.ovs_br=self.name 				#xapi142
 		#ns=ovs_br
 
-	def start(self, session=None):
-		path='./bash/xrouter.sh'
+	def start(self):
+		path='./bash/xrouter_start.sh'
 		cmd=(path+" "+self.name+" "+self.external_if+" "
 			+self.internal_if+" "+self.ipaddr)
 		helper.info_exe(cmd)
+
+	def shutdown(self):
+		cmd="ip netns list | grep "+self.name
+		output=helper.info_exe(cmd)
+
+		if self.name in output:
+			cmd=("ip netns del "+self.name+" && "
+				+"ovs-vsctl del-br "+self.name)
+			helper.info_exe(cmd)
+			log("deletion cmd:"+str(cmd))
+		else:
+			log("router netns "+self.name+" is not started")
+			return
+		# test if br is set
+		#cmd="ovs-vsctl br-list | grep "+self.name
+		
 
 	def obsolete(self):
 		# TODO: do subnet ip transformation
@@ -87,7 +103,5 @@ class xrouter(xswitch):
 	def uninstall(self, session):
 		# deleting netns->all if in netns also deleted, as well as the other
 		# end of the veth pair
-		cmd="""ip netns del %s""" % (self.name)
-		
-		helper.info_exe(cmd)
+		self.shutdown()
 		xswitch.uninstall(self, session)

@@ -232,6 +232,7 @@ class vm(dev):
 	# TODO: fix the bug in destroy certain VDI
 	# how to pass the memory which exceeds the XML-RPC limits
 	def uninstall(self, session):
+		log("uninstalling " + self.name)
 		if (self.get_power_state(session)=='Halted'):
 			self.destroy_all_vbd_vdi(session)
 			self.destroy(session)

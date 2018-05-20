@@ -151,6 +151,17 @@ class xen_net:
 	def clear(self):
 		start_time=time.time()
 
+		#for node in self.node_list:
+		#	if node.dtype==ntype.DEV:
+		#		if node.get_power_state(self.session)=='Running':
+		#			if not node.shutdown(self.session):
+		#				node.hard_shutdown(self.session)
+		#		node.uninstall(self.session)
+		#	elif node.dtype==ntype.ROUTER or node.dtype==ntype.SWITCH:
+		#		node.uninstall(self.session)
+		#	else:
+		#		log("unsupported node type " + node.dtype)
+
 		for dev_id in self.dev_set:
 			dev=self.node_list[dev_id]
 			if dev.get_power_state(self.session)=='Running':
@@ -187,7 +198,10 @@ class xen_net:
 	# if they are involved in the future
 	# TODO: rewrite this method to discriminate between switch and devices
 	def start_all(self):
+		# start all devices
 		[self.node_list[devid].start(self.session) for devid in self.dev_set]
+		# start all routers
+		[self.node_list[rid].start() for rid in self.switch_set]
 
 	# did in topology init process would be purely determined by topo definition
 	# TODO: don't forget to update emp_ids[]

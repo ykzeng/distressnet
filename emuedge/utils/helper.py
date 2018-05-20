@@ -52,5 +52,7 @@ def info_exe(cmd):
         output=subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError as exc:
         print("Status : FAIL", exc.returncode, exc.output)
+        return exc.returncode
     else:
-        print("Output: \n{}\n".format(output))
+        autolog("Output: \n{}\n".format(output), logging.INFO)
+        return output

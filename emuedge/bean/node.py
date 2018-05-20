@@ -26,3 +26,7 @@ class node:
 	@abstractmethod
 	def uninstall(self):
 		pass
+
+	@abstractmethod
+	def start(self, session=None):
+		pass
